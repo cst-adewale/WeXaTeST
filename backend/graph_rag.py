@@ -7,26 +7,28 @@ client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 def get_graph_context(question: str) -> tuple[list, str]:
     with db.get_session() as session:
-        # Fetch papers, their authors, topics, and what they cite
+        # Lenient match: Fetch all papers, then optionally gather related authors, topics, and citations
         result = session.run(
             """
-            MATCH (a:Author)-[:WROTE]->(p:Paper)-[:DISCUSSES]->(t:Topic)
+            MATCH (p:Paper)
+            OPTIONAL MATCH (a:Author)-[:WROTE]->(p)
+            OPTIONAL MATCH (p)-[:DISCUSSES]->(t:Topic)
             OPTIONAL MATCH (p)-[:CITES]->(cited:Paper)
             RETURN p.title AS title, p.year AS year, p.abstract AS abstract,
                    collect(DISTINCT a.name) AS authors,
                    collect(DISTINCT t.name) AS topics,
                    collect(DISTINCT cited.title) AS citations
-            LIMIT 20
+            LIMIT 25
             """
         )
         papers = [dict(r) for r in result]
 
     context = "\n\n".join(
         f"Title: {p['title']} ({p['year']})\n"
-        f"Authors: {', '.join(p['authors'])}\n"
-        f"Topics: {', '.join(p['topics'])}\n"
+        f"Authors: {', '.join(p['authors']) or 'unknown'}\n"
+        f"Topics: {', '.join(p['topics']) or 'general'}\n"
         f"Cites: {', '.join(p['citations']) or 'none'}\n"
-        f"Abstract: {p['abstract']}"
+        f"Abstract/Content: {p['abstract']}"
         for p in papers
     )
     return papers, context
