@@ -9,9 +9,40 @@ This project is a smart assistant designed to help you search, connect, and unde
 
 ---
 
-## Why a Graph Database?
-Instead of a traditional relational database (SQL), this project uses a graph database (Neo4j). Here is why:
+## Graph Data Model
 
-* **Connected Data**: In research, papers are naturally linked together through authors, shared topics, and citations. A graph database stores these connections directly as first-class relationships rather than forcing them into separate tables.
-* **Fast Multi-Hop Searches**: Finding connections like *"Which papers cite papers written by Author X on Topic Y?"* requires multiple complex joins in SQL, which can be very slow. In a graph database, tracing these multi-step connections is simple and extremely fast.
-* **Flexible Schema**: As new types of connections or metadata are discovered, we can add them to a graph database immediately without restructuring tables or writing complex database migrations.
+The knowledge graph is structured around three types of nodes and four relationship types:
+
+```
+  (:Author)                    (:Topic)
+      |                            ^
+ [:WROTE]                   [:DISCUSSES]
+      |                            |
+      v                            |
+  (:Paper) ──────[:CITES]──► (:Paper)
+      |
+ [:COLLABORATES_WITH] between co-authors of the same paper
+```
+
+| Node       | Properties                          |
+|------------|-------------------------------------|
+| `Paper`    | `title`, `year`, `abstract`         |
+| `Author`   | `name`                              |
+| `Topic`    | `name`                              |
+
+| Relationship        | From     | To       | Meaning                              |
+|---------------------|----------|----------|--------------------------------------|
+| `WROTE`             | Author   | Paper    | An author wrote this paper           |
+| `DISCUSSES`         | Paper    | Topic    | A paper covers a topic               |
+| `CITES`             | Paper    | Paper    | A paper references another paper     |
+| `COLLABORATES_WITH` | Author   | Author   | Two authors co-wrote a paper         |
+
+---
+
+## Why a Graph Database?
+Instead of a traditional relational database (SQL), this project uses a graph database (Neo4j/CognoDB) to store and query research data. Here is why a graph database is the perfect fit:
+
+* **Relationship-Driven Context**: In academic research, papers are not isolated rows in a table. They form a rich web of connections: authors collaborate, papers cite other papers, and documents share overlapping topics. Storing this directly as nodes and edges allows us to preserve the natural structure of the data.
+* **Efficient Multi-Hop Traversals**: Common queries in research discovery—such as *"Find the citation chain from Devlin to Vaswani and discover what shared topics connect them"*—require traversing multiple hops. In a relational database (SQL), this requires writing slow, nested `JOIN` queries. In a graph database, traversing these paths is built-in and takes milliseconds.
+* **Contextual Retrieval for RAG**: Standard RAG (Retrieval-Augmented Generation) systems use simple vector search, which retrieves chunks of text but loses the broader context of how concepts connect. By using a graph database, our RAG pipeline can retrieve entire sub-graphs (e.g., *"this paper cites X, which was authored by Y, who also wrote Z"*), providing the LLM with richer, structured, and factual context.
+* **Evolutionary Schema**: Research fields evolve rapidly. As new entities (e.g., funding agencies, universities, journal issues) are introduced, we can add them as new nodes and relationships dynamically without altering an rigid database schema or running costly table migrations.

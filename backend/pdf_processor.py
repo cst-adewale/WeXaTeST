@@ -5,9 +5,15 @@ from groq import Groq
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 
-def extract_text(pdf_path: str) -> str:
-    with pdfplumber.open(pdf_path) as pdf:
-        return "\n".join(page.extract_text() or "" for page in pdf.pages[:6])
+def extract_text(file_path: str) -> str:
+    """Extract raw text from a PDF, plain text, or markdown file."""
+    if file_path.endswith(".pdf"):
+        with pdfplumber.open(file_path) as pdf:
+            return "\n".join(page.extract_text() or "" for page in pdf.pages[:12])
+    else:
+        # Plain text / markdown / other
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            return f.read()
 
 
 def structure_metadata(text: str) -> dict:

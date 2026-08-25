@@ -32,19 +32,20 @@ def get_graph_context(question: str) -> tuple[list, str]:
     return papers, context
 
 
-def ask(question: str) -> dict:
+def ask(question: str, history: list = None) -> dict:
     import re
     # Clean and normalize the question to detect simple greetings or status checks
     normalized = re.sub(r'[^\w\s]', '', question).strip().lower()
     greetings = {"hi", "hello", "hey", "yo", "hola", "working yet", "is it working yet", "is it working", "test"}
     
-    if normalized in greetings or (len(normalized.split()) <= 2 and not any(w in normalized for w in ["paper", "author", "topic", "citation", "cite"])):
+    # Casual check: Only fallback to generic greeting if it is strictly a short conversational greeting
+    if normalized in greetings or (len(normalized.split()) <= 2 and not any(w in normalized for w in ["paper", "author", "topic", "citation", "cite", "who", "what", "how", "why", "write", "about", "show", "tell"])):
         response = client.chat.completions.create(
             model="openai/gpt-oss-120b",
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a friendly research assistant. Respond to the greeting or status check conversationally and concisely. Do not use markdown bold asterisks (**)."
+                    "content": "You are a friendly research assistant. Respond to the greeting or status check conversationally and concisely."
                 },
                 {
                     "role": "user",
@@ -60,19 +61,22 @@ def ask(question: str) -> dict:
         {
             "role": "system",
             "content": (
-                "You are a research assistant. If the user's message is a greeting, status check, "
-                "or a casual conversational remark (e.g., 'hello', 'is it working yet?', 'how are you'), "
-                "respond normally, friendly, and conversationally. Otherwise, if the query is a research question, "
-                "answer the user's question using the provided graph context and cite specific paper titles in your answer. "
-                "If the provided context is empty or has no papers, state clearly that no papers are currently uploaded in the database, and do not make up, list, or suggest any papers. "
-                "Do not use any markdown bold asterisks (**) in your output response."
+                "You are a research assistant. Answer the user's question using the provided graph context and cite specific paper titles in your answer. "
+                "If the provided context is empty or has no papers, state clearly that no papers are currently uploaded in the database, and do not make up, list, or suggest any papers."
             ),
-        },
-        {
-            "role": "user",
-            "content": f"Context:\n{context}\n\nQuestion: {question}",
-        },
+        }
     ]
+
+    # Append history if available
+    if history:
+        for msg in history:
+            role = "user" if msg.get("role") == "user" else "assistant"
+            messages.append({"role": role, "content": msg.get("content", "")})
+
+    messages.append({
+        "role": "user",
+        "content": f"Context:\n{context}\n\nQuestion: {question}",
+    })
 
     try:
         response = client.chat.completions.create(
@@ -90,3 +94,67 @@ def ask(question: str) -> dict:
     answer = response.choices[0].message.content
     citations = [{"title": p["title"], "year": p["year"], "authors": p["authors"]} for p in papers]
     return {"answer": answer, "citations": citations}
+
+
+def ask_with_file_context(question: str, file_texts: list[dict], history: list = None) -> dict:
+    """
+    Answer a question with direct file content as context.
+    file_texts: list of {name: str, text: str}
+    Also pulls in the graph context so graph knowledge is still available.
+    """
+    # Build document context section from file contents
+    doc_context = ""
+    if file_texts:
+        parts = []
+        for f in file_texts:
+            text_snippet = f["text"][:4000]  # cap per file to avoid token overflow
+            parts.append(f"=== File: {f['name']} ===\n{text_snippet}")
+        doc_context = "\n\n".join(parts)
+
+    # Also pull in graph context in case it's relevant
+    try:
+        _, graph_context = get_graph_context(question)
+    except Exception:
+        graph_context = ""
+
+    system_prompt = (
+        "You are a helpful research and document assistant. "
+        "The user has attached one or more documents. Read the document content carefully and answer the user's question directly based on what is in the documents. "
+        "If the documents are not relevant to the question, use your knowledge graph context or your general knowledge to help."
+    )
+
+    messages = [
+        {"role": "system", "content": system_prompt}
+    ]
+
+    # Append history if available
+    if history:
+        for msg in history:
+            role = "user" if msg.get("role") == "user" else "assistant"
+            messages.append({"role": role, "content": msg.get("content", "")})
+
+    content_parts = []
+    if doc_context:
+        content_parts.append(f"Attached Documents:\n{doc_context}")
+    if graph_context:
+        content_parts.append(f"Knowledge Graph Context:\n{graph_context}")
+    content_parts.append(f"User Question: {question}")
+
+    messages.append({
+        "role": "user",
+        "content": "\n\n".join(content_parts)
+    })
+
+    try:
+        response = client.chat.completions.create(
+            model="openai/gpt-oss-120b",
+            messages=messages,
+        )
+    except Exception as e:
+        print(f"Primary model error: {e}. Falling back to qwen/qwen3.6-27b...")
+        response = client.chat.completions.create(
+            model="qwen/qwen3.6-27b",
+            messages=messages,
+        )
+
+    return {"answer": response.choices[0].message.content, "citations": []}

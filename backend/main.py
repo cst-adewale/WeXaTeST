@@ -1,20 +1,21 @@
 import os, tempfile
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from typing import List, Optional
 
 load_dotenv()
 
-from pdf_processor import process_pdf
+from pdf_processor import process_pdf, extract_text
 from graph_loader import load_paper
-from graph_rag import ask
+from graph_rag import ask, ask_with_file_context
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -22,6 +23,20 @@ app.add_middleware(
 
 class Question(BaseModel):
     question: str
+    history: Optional[List[dict]] = []
+
+class SessionData(BaseModel):
+    id: str
+    title: str = "New session"
+    color: str = "#d9bbfc"
+    createdAt: int = 0
+    time: str = "Just now"
+
+class MessageData(BaseModel):
+    id: str
+    role: str
+    content: str
+    timestamp: int = 0
 
 
 @app.get("/health")
@@ -31,16 +46,123 @@ def health():
 
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+    suffix = ".pdf" if (file.filename or "").endswith(".pdf") else ".txt"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(await file.read())
         tmp_path = tmp.name
 
-    metadata = process_pdf(tmp_path)
-    os.unlink(tmp_path)
-    load_paper(metadata)
-    return {"message": "Paper loaded", "title": metadata.get("title")}
+    if suffix == ".pdf":
+        metadata = process_pdf(tmp_path)
+        os.unlink(tmp_path)
+        load_paper(metadata)
+        return {"message": "Paper loaded", "title": metadata.get("title")}
+    else:
+        os.unlink(tmp_path)
+        return {"message": "File received (non-PDF, graph ingestion skipped)"}
 
 
 @app.post("/ask")
 def ask_question(body: Question):
-    return ask(body.question)
+    return ask(body.question, body.history)
+
+
+@app.post("/chat")
+async def chat_with_files(
+    question: str = Form(...),
+    history: Optional[str] = Form(default="[]"),
+    files: List[UploadFile] = File(default=[])
+):
+    """
+    Accepts a question + zero or more attached files + chat history.
+    """
+    import json
+    try:
+        history_list = json.loads(history)
+    except Exception:
+        history_list = []
+
+    file_texts: list[dict] = []
+
+    for f in files:
+        filename = f.filename or "file"
+        content = await f.read()
+        suffix = ".pdf" if filename.endswith(".pdf") else ".txt"
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        try:
+            raw_text = extract_text(tmp_path)
+            file_texts.append({"name": filename, "text": raw_text})
+
+            if suffix == ".pdf":
+                try:
+                    metadata = process_pdf(tmp_path)
+                    load_paper(metadata)
+                except Exception as ingest_err:
+                    print(f"Graph ingestion failed for {filename}: {ingest_err}")
+        finally:
+            os.unlink(tmp_path)
+
+    return ask_with_file_context(question, file_texts, history_list)
+
+import session_store
+
+@app.post("/sessions")
+def create_session(session: SessionData):
+    return session_store.create_session(session.dict())
+
+@app.get("/sessions")
+def get_sessions():
+    return session_store.get_sessions()
+
+@app.delete("/sessions/{session_id}")
+def delete_session(session_id: str):
+    session_store.delete_session(session_id)
+    return {"status": "deleted"}
+
+@app.post("/sessions/{session_id}/messages")
+def add_message(session_id: str, message: MessageData):
+    return session_store.add_message(session_id, message.dict())
+
+@app.get("/sessions/{session_id}/messages")
+def get_messages(session_id: str):
+    return session_store.get_messages(session_id)
+
+
+@app.get("/graph")
+def get_graph():
+    from database import db
+    with db.get_session() as session:
+        result = session.run("""
+            MATCH (a:Author)-[:WROTE]->(p:Paper)
+            OPTIONAL MATCH (p)-[:DISCUSSES]->(t:Topic)
+            OPTIONAL MATCH (p)-[:CITES]->(c:Paper)
+            OPTIONAL MATCH (a)-[:COLLABORATES_WITH]->(a2:Author)
+            RETURN
+              collect(DISTINCT {id: p.title, label: p.title, type: 'Paper', year: p.year}) AS papers,
+              collect(DISTINCT {id: a.name,  label: a.name,  type: 'Author'}) AS authors,
+              collect(DISTINCT {id: t.name,  label: t.name,  type: 'Topic'}) AS topics,
+              collect(DISTINCT {source: a.name, target: p.title, rel: 'WROTE'}) AS wrote_edges,
+              collect(DISTINCT {source: p.title, target: t.name, rel: 'DISCUSSES'}) AS discusses_edges,
+              collect(DISTINCT {source: p.title, target: c.title, rel: 'CITES'}) AS cites_edges,
+              collect(DISTINCT {source: a.name, target: a2.name, rel: 'COLLABORATES_WITH'}) AS collab_edges
+        """)
+        row = result.single()
+        if not row:
+            return {"nodes": [], "links": []}
+
+        nodes_map = {}
+        for n in (row["papers"] + row["authors"] + row["topics"]):
+            if n and n.get("id"):
+                nodes_map[n["id"]] = n
+
+        links = []
+        for edge_list in [row["wrote_edges"], row["discusses_edges"], row["cites_edges"], row["collab_edges"]]:
+            for e in edge_list:
+                if e and e.get("source") and e.get("target") and e["source"] != e["target"]:
+                    links.append(e)
+
+        return {"nodes": list(nodes_map.values()), "links": links}
+

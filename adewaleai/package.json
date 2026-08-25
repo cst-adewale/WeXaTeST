@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"vite\" \"cd ../backend && venv\\Scripts\\python -m uvicorn main:app --port 8000 --reload\"",
+    "dev": "concurrently \"vite\" \"cd ../backend && (npx -y kill-port 8000 2>nul || ver>nul) & venv\\Scripts\\python -m uvicorn main:app --port 8000\"",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
