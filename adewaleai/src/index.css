@@ -1,0 +1,54 @@
+:root {
+  --color-purple: #d9bbfc;
+  --color-green: #6dd68d;
+  --color-blue: #80ceff;
+  --color-orange: #ffb683;
+  --color-pink: #ffaee4;
+  --color-nectarine: #D7897F;
+  --color-peche: #F9B95C;
+  --color-menthe: #96C7B3;
+  --color-lagune: #6398A9;
+  --bg-color: #faf9f6;
+  --panel-bg: #ffffff;
+  --text-primary: #2d2a26;
+  --text-secondary: #75716c;
+  --accent-color: var(--color-purple);
+  --border-color: #e5e5e5;
+  --font-gilroy: 'Gilroy', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  font-family: var(--font-gilroy);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.6;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-gilroy);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+a {
+  color: var(--accent-color);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: var(--accent-hover);
+}
