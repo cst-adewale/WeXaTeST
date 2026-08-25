@@ -181,7 +181,9 @@ export default function App() {
 
     // Upload files to backend and track them per session
     if (attachedFiles.length > 0) {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const API_URL = import.meta.env.VITE_API_URL !== undefined && import.meta.env.VITE_API_URL !== '' 
+        ? import.meta.env.VITE_API_URL 
+        : (import.meta.env.DEV ? 'http://localhost:8000' : '');
       for (const file of attachedFiles) {
         try {
           const formData = new FormData()
@@ -214,7 +216,9 @@ export default function App() {
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
     setIsThinking(true)
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const API_URL = import.meta.env.VITE_API_URL !== undefined && import.meta.env.VITE_API_URL !== '' 
+        ? import.meta.env.VITE_API_URL 
+        : (import.meta.env.DEV ? 'http://localhost:8000' : '');
       let res;
       
       if (attachedFiles.length > 0) {
