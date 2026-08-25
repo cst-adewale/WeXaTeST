@@ -16,7 +16,7 @@ services:
         sync: false
   # Frontend React Static Site
   - type: static_site
-    name: graphrag-frontend
+    name: adewaleai
     buildCommand: cd adewaleai && npm install && npm run build
     publishPath: adewaleai/dist
     envVars:
@@ -25,4 +25,3 @@ services:
           type: web
           name: graphrag-backend
           property: host
-          
