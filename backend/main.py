@@ -1,6 +1,8 @@
 import os, tempfile
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from typing import List, Optional
@@ -165,4 +167,30 @@ def get_graph():
                     links.append(e)
 
         return {"nodes": list(nodes_map.values()), "links": links}
+
+
+# Serve frontend static files
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/assets", StaticFiles(directory=os.path.join(static_dir, "assets")), name="assets")
+
+    @app.get("/{catchall:path}")
+    async def serve_frontend(catchall: str):
+        # Exclude API routes
+        api_routes = {"health", "upload", "ask", "chat", "sessions", "graph"}
+        if catchall.split("/")[0] in api_routes:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Not Found")
+            
+        file_path = os.path.join(static_dir, catchall)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+            
+        index_path = os.path.join(static_dir, "index.html")
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
+            
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Not Found")
+
 
