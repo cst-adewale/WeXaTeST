@@ -301,11 +301,11 @@ export default function SessionGraphVisualizer({ sessions, activeSessionId, uplo
   // ── Force simulation tick ──────────────────────────────────────────────
   const simulateTick = useCallback(() => {
     const { nodes, edges, simTicks } = stateRef.current
-    if (simTicks > 400) return
+    if (simTicks > 600) return
     stateRef.current.simTicks++
 
     const damping = 0.85
-    const repulse = 8000   // stronger push for better spacing
+    const repulse = 15      // Max force for linear spring repulsion
 
     const nodeMap = new Map(nodes.map(n => [n.id, n]))
 
@@ -316,9 +316,10 @@ export default function SessionGraphVisualizer({ sessions, activeSessionId, uplo
         const dx = b.x - a.x
         const dy = b.y - a.y
         const dist = Math.sqrt(dx * dx + dy * dy) || 1
-        const minDist = (a.width + b.width) / 2 + 120  // bigger separation gap
+        const minDist = (a.width + b.width) / 2 + 180  // Ensure significant separation
         if (dist < minDist) {
-          const force = repulse / (dist * dist)
+          // Linear spring repulsion force: stronger and more stable than quadratic at medium distances
+          const force = ((minDist - dist) / minDist) * repulse
           const fx = (dx / dist) * force
           const fy = (dy / dist) * force
           if (!a.pinned) { a.vx -= fx; a.vy -= fy }
