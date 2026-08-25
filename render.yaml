@@ -14,14 +14,16 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
-  # Frontend React Static Site
-  - type: static_site
+  # Frontend React Web Service
+  - type: web
     name: adewaleai
+    runtime: node
     buildCommand: cd adewaleai && npm install && npm run build
-    publishPath: adewaleai/dist
+    startCommand: npx serve -s adewaleai/dist -l $PORT
     envVars:
       - key: VITE_API_URL
         fromService:
           type: web
           name: graphrag-backend
           property: host
+          
