@@ -14,15 +14,15 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
-
   # Frontend React Static Site
-  - type: static
+  - type: static_site
     name: graphrag-frontend
     buildCommand: cd adewaleai && npm install && npm run build
-    staticPublishPath: adewaleai/dist
+    publishPath: adewaleai/dist
     envVars:
       - key: VITE_API_URL
         fromService:
           type: web
           name: graphrag-backend
           property: host
+          
