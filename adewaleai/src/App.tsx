@@ -28,7 +28,7 @@ function formatBytes(bytes: number): string {
 
 export default function App() {
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true)
-  const [currentView, setCurrentView] = useState<'chat' | 'info' | 'visualize'>('chat')
+  const [currentView, setCurrentView] = useState<'chat' | 'info' | 'visualize' | 'artifacts'>('chat')
   const [sessions, setSessions] = useState<Session[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -37,17 +37,26 @@ export default function App() {
   const [isThinking, setIsThinking] = useState(false)
   const [greeting, setGreeting] = useState(GREETINGS[0])
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const [uploadedFiles, setUploadedFiles] = useState<{ name: string; size: string; type: string }[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Load sessions from DB on mount
+  // Load sessions and uploaded files from DB/localStorage on mount
   useEffect(() => {
     const stored = getSessions()
     setSessions(stored)
     if (stored.length > 0) {
       setActiveSessionId(stored[0].id)
       setMessages(getMessages(stored[0].id))
+    }
+    try {
+      const files = localStorage.getItem('uploaded_files')
+      if (files) {
+        setUploadedFiles(JSON.parse(files))
+      }
+    } catch (e) {
+      console.error(e)
     }
   }, [])
 
@@ -152,23 +161,75 @@ export default function App() {
     updateSessionTitle(sessionId, text)
     setSessions(getSessions())
 
+    // Upload files to backend if any are attached
+    if (attachedFiles.length > 0) {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      for (const file of attachedFiles) {
+        try {
+          const formData = new FormData()
+          formData.append('file', file)
+          const uploadRes = await fetch(`${API_URL}/upload`, {
+            method: 'POST',
+            body: formData
+          })
+          if (uploadRes.ok) {
+            const result = await uploadRes.json()
+            console.log("Uploaded successfully:", result)
+          }
+        } catch (uploadErr) {
+          console.error("Upload error:", uploadErr)
+        }
+      }
+
+      // Add to local state and localStorage
+      const newUploads = attachedFiles.map(f => ({
+        name: f.name,
+        size: formatBytes(f.size),
+        type: f.type || (f.name.endsWith('.pdf') ? 'application/pdf' : 'unknown')
+      }))
+      const updatedList = [...newUploads, ...uploadedFiles]
+      setUploadedFiles(updatedList)
+      localStorage.setItem('uploaded_files', JSON.stringify(updatedList))
+    }
+
     setMessages(prev => [...prev, userMsg])
     setInputValue('')
     setAttachedFiles([])
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
     setIsThinking(true)
-
-    setTimeout(() => {
+    try {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const res = await fetch(`${API_URL}/ask`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ question: text }),
+      });
+      if (!res.ok) {
+        throw new Error(`Server returned error status ${res.status}`);
+      }
+      const data = await res.json();
       const assistantMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'I\'ve retrieved context from your knowledge graph. Based on the multi-hop traversal across your uploaded papers, here is what the graph reveals about the connections in your query.',
+        content: data.answer || 'No response from system.',
         timestamp: Date.now(),
-      }
-      saveMessage(sessionId!, assistantMsg)
-      setMessages(prev => [...prev, assistantMsg])
-      setIsThinking(false)
-    }, 2000)
+      };
+      saveMessage(sessionId!, assistantMsg);
+      setMessages(prev => [...prev, assistantMsg]);
+    } catch (err: any) {
+      const assistantMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `Error: Failed to fetch response from backend API. ${err.message || err}`,
+        timestamp: Date.now(),
+      };
+      saveMessage(sessionId!, assistantMsg);
+      setMessages(prev => [...prev, assistantMsg]);
+    } finally {
+      setIsThinking(false);
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -205,6 +266,9 @@ export default function App() {
           </button>
           <button className={`visualize-btn ${currentView === 'visualize' ? 'active-view' : ''}`} onClick={() => setCurrentView('visualize')} id="visualize-btn">
             <BarChart2 size={14} strokeWidth={2.5} /> <span className="btn-label">Visualize</span>
+          </button>
+          <button className={`info-btn ${currentView === 'artifacts' ? 'active-view' : ''}`} onClick={() => setCurrentView('artifacts')} id="artifacts-btn">
+            <File size={14} strokeWidth={2.5} /> <span className="btn-label">Artifacts</span>
           </button>
           <button className={`info-btn ${currentView === 'info' ? 'active-view' : ''}`} onClick={() => setCurrentView('info')} id="info-btn">
             <Info size={14} strokeWidth={2.5} /> <span className="btn-label">Info</span>
@@ -309,6 +373,99 @@ export default function App() {
               <h2 style={{ fontFamily: 'var(--font-display)' }}>Graph Visualization</h2>
               <p style={{ color: 'var(--muted-ink)', marginTop: 8 }}>Your knowledge graph visualization will appear here.</p>
             </div>
+          ) : currentView === 'artifacts' ? (
+            <div className="empty-state" style={{ margin: 'auto', width: '100%', maxWidth: '800px', padding: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, borderBottom: '1.7px solid var(--ink)', paddingBottom: 12 }}>
+                <h2 style={{ fontFamily: 'var(--font-display)', margin: 0 }}>Uploaded Artifacts</h2>
+                <button 
+                  onClick={() => { setUploadedFiles([]); localStorage.removeItem('uploaded_files'); }}
+                  style={{ 
+                    background: 'transparent', 
+                    border: '1.7px solid var(--ink)', 
+                    padding: '6px 12px', 
+                    borderRadius: '6px', 
+                    fontSize: '11px', 
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    fontFamily: 'var(--font-sans)',
+                    color: 'var(--ink)'
+                  }}
+                >
+                  Clear All
+                </button>
+              </div>
+              {uploadedFiles.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--muted-ink)' }}>
+                  <FileText size={48} style={{ marginBottom: 16, opacity: 0.5, margin: '0 auto' }} />
+                  <p>No artifacts uploaded yet. Attach files in the chat to see them here.</p>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16, width: '100%' }}>
+                  {uploadedFiles.map((file, idx) => (
+                    <div 
+                      key={idx} 
+                      style={{ 
+                        border: '1.7px solid var(--ink)', 
+                        borderRadius: '12px', 
+                        padding: '16px', 
+                        background: 'var(--card-bg, transparent)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 8,
+                        position: 'relative'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ 
+                          width: '36px', 
+                          height: '36px', 
+                          borderRadius: '8px', 
+                          background: 'var(--color-purple)', 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'center',
+                          color: '#fff',
+                          flexShrink: 0
+                        }}>
+                          {file.type.startsWith('image/') ? <Brain size={18} /> : <FileText size={18} />}
+                        </div>
+                        <div style={{ overflow: 'hidden', textAlign: 'left' }}>
+                          <div style={{ fontWeight: 600, fontSize: '13px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', color: 'var(--ink)' }} title={file.name}>
+                            {file.name}
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--muted-ink)' }}>{file.size}</div>
+                        </div>
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: '11px', color: 'var(--muted-ink)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, textAlign: 'left' }}>
+                        {file.type.split('/')[1] || 'document'}
+                      </div>
+                      <button
+                        onClick={() => {
+                          const updated = uploadedFiles.filter((_, i) => i !== idx);
+                          setUploadedFiles(updated);
+                          localStorage.setItem('uploaded_files', JSON.stringify(updated));
+                        }}
+                        style={{
+                          position: 'absolute',
+                          top: 12,
+                          right: 12,
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--muted-ink)',
+                          cursor: 'pointer',
+                          fontSize: '16px',
+                          fontWeight: 'bold',
+                          padding: 0
+                        }}
+                        aria-label="Remove artifact"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           ) : (
             <>
               {messages.length === 0 && !isThinking && (
@@ -322,7 +479,11 @@ export default function App() {
               {messages.map(msg => (
                 <div key={msg.id} className={`message ${msg.role}`}>
                   <div className="message-sender">
-                    {msg.role === 'user' ? 'You' : 'GraphRAG'}
+                    {msg.role === 'user' ? 'You' : (
+                      <span className="sidebar-logo">
+                        Graph<span>RAG</span>
+                      </span>
+                    )}
                   </div>
                   <div className="message-bubble">
                     {msg.content}
@@ -339,7 +500,11 @@ export default function App() {
 
               {isThinking && (
                 <div className="message assistant">
-                  <div className="message-sender">GraphRAG</div>
+                  <div className="message-sender">
+                    <span className="sidebar-logo">
+                      Graph<span>RAG</span>
+                    </span>
+                  </div>
                   <div className="thinking-bubble">
                     <div className="thinking-dot" />
                     <div className="thinking-dot" />
@@ -389,12 +554,12 @@ export default function App() {
                   onClick={() => fileInputRef.current?.click()}
                   id="upload-btn"
                 >
-                  <Paperclip size={14} /> Attach PDF
+                  <Paperclip size={14} /> Attach files
                 </button>
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".pdf,.txt,.md"
+                  accept=".pdf,.txt,.md,image/*"
                   multiple
                   style={{ display: 'none' }}
                   onChange={handleFileSelect}

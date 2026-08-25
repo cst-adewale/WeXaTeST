@@ -4,3 +4,4 @@ neo4j>=5.13.0
 python-dotenv
 pdfplumber
 groq
+python-multipart

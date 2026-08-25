@@ -153,6 +153,7 @@ a {
   font-weight: 800;
   letter-spacing: -0.06em;
   color: var(--ink);
+  white-space: nowrap;
 }
 
 .sidebar-logo span {
@@ -977,4 +978,19 @@ a {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Override styling for GraphRAG logo when rendered inside messages */
+.message-sender .sidebar-logo {
+  text-transform: none;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.message-sender .sidebar-logo span {
+  font-weight: 800;
 }
