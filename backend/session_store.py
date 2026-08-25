@@ -36,9 +36,59 @@ def delete_session(session_id: str):
             """
             MATCH (s:Session {id: $id})
             OPTIONAL MATCH (s)-[:HAS_MESSAGE]->(m:Message)
-            DETACH DELETE s, m
+            OPTIONAL MATCH (s)-[:HAS_ARTIFACT]->(a:Artifact)
+            DETACH DELETE s, m, a
             """,
             id=session_id
+        )
+
+def add_artifact(session_id: str, artifact_data: dict):
+    with db.get_session() as tx:
+        tx.run(
+            """
+            MATCH (s:Session {id: $session_id})
+            MERGE (a:Artifact {name: $name})
+            SET a.size = $size,
+                a.type = $type
+            MERGE (s)-[:HAS_ARTIFACT]->(a)
+            """,
+            session_id=session_id,
+            name=artifact_data["name"],
+            size=artifact_data["size"],
+            type=artifact_data["type"]
+        )
+        return artifact_data
+
+def get_artifacts(session_id: str):
+    with db.get_session() as tx:
+        result = tx.run(
+            """
+            MATCH (s:Session {id: $session_id})-[:HAS_ARTIFACT]->(a:Artifact)
+            RETURN a.name AS name, a.size AS size, a.type AS type
+            """,
+            session_id=session_id
+        )
+        return [dict(record) for record in result]
+
+def clear_artifacts(session_id: str):
+    with db.get_session() as tx:
+        tx.run(
+            """
+            MATCH (s:Session {id: $session_id})-[r:HAS_ARTIFACT]->(a:Artifact)
+            DETACH DELETE a
+            """,
+            session_id=session_id
+        )
+
+def delete_artifact(session_id: str, name: str):
+    with db.get_session() as tx:
+        tx.run(
+            """
+            MATCH (s:Session {id: $session_id})-[r:HAS_ARTIFACT]->(a:Artifact {name: $name})
+            DETACH DELETE a
+            """,
+            session_id=session_id,
+            name=name
         )
 
 def add_message(session_id: str, message_data: dict):

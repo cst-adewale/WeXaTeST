@@ -485,7 +485,7 @@ export default function App() {
             />
           ) : currentView === 'artifacts' ? (
             <div className="empty-state" style={{ margin: 'auto', width: '100%', maxWidth: '800px', padding: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, borderBottom: '1.7px solid var(--ink)', paddingBottom: 12 }}>
+              <div style={{ display: 'flex', gap: '32px', alignItems: 'center', justifyContent: 'flex-start', marginBottom: 24, borderBottom: '1.7px solid var(--ink)', paddingBottom: 12 }}>
                 <div>
                   <h2 style={{ fontFamily: 'var(--font-display)', margin: '0 0 4px' }}>Session Artifacts</h2>
                   {activeSessionId && sessions.find(s => s.id === activeSessionId) && (
@@ -568,6 +568,13 @@ export default function App() {
                           const updatedArts = uploadedFiles.filter((_, i) => i !== idx)
                           localStorage.setItem(`graphrag_artifacts_${activeSessionId}`, JSON.stringify(updatedArts))
                           setSessionArtifacts(prev => ({ ...prev, [activeSessionId]: updatedArts }))
+
+                          const API_URL = import.meta.env.VITE_API_URL !== undefined && import.meta.env.VITE_API_URL !== '' 
+                            ? import.meta.env.VITE_API_URL 
+                            : (import.meta.env.DEV ? 'http://localhost:8000' : '');
+                          fetch(`${API_URL}/sessions/${activeSessionId}/artifacts/${encodeURIComponent(file.name)}`, {
+                            method: 'DELETE'
+                          }).catch(console.error)
                         }}
                         style={{
                           position: 'absolute',

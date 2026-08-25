@@ -40,6 +40,11 @@ class MessageData(BaseModel):
     content: str
     timestamp: int = 0
 
+class ArtifactData(BaseModel):
+    name: str
+    size: str
+    type: str
+
 
 @app.get("/health")
 def health():
@@ -131,6 +136,26 @@ def add_message(session_id: str, message: MessageData):
 @app.get("/sessions/{session_id}/messages")
 def get_messages(session_id: str):
     return session_store.get_messages(session_id)
+
+
+@app.post("/sessions/{session_id}/artifacts")
+def add_artifact(session_id: str, artifact: ArtifactData):
+    return session_store.add_artifact(session_id, artifact.dict())
+
+@app.get("/sessions/{session_id}/artifacts")
+def get_artifacts(session_id: str):
+    return session_store.get_artifacts(session_id)
+
+@app.delete("/sessions/{session_id}/artifacts")
+def clear_artifacts(session_id: str):
+    session_store.clear_artifacts(session_id)
+    return {"status": "cleared"}
+
+@app.delete("/sessions/{session_id}/artifacts/{name}")
+def delete_artifact(session_id: str, name: str):
+    session_store.delete_artifact(session_id, name)
+    return {"status": "deleted"}
+
 
 
 @app.get("/graph")

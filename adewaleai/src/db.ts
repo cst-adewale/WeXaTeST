@@ -41,14 +41,18 @@ export async function syncFromBackend(): Promise<void> {
     const backendSessions: Session[] = await res.json()
     localStorage.setItem(SESSIONS_KEY, JSON.stringify(backendSessions))
     
-    // For each session, we could sync messages, but to avoid many requests, 
-    // we'll just fetch them on demand or assume the cache is okay for now.
-    // In a real app we might bulk sync.
     for (const session of backendSessions) {
       const mRes = await fetch(`${API_URL}/sessions/${session.id}/messages`)
       if (mRes.ok) {
         const msgs = await mRes.json()
         localStorage.setItem(MESSAGES_PREFIX + session.id, JSON.stringify(msgs))
+      }
+
+      // Sync artifacts for each session
+      const aRes = await fetch(`${API_URL}/sessions/${session.id}/artifacts`)
+      if (aRes.ok) {
+        const arts = await aRes.json()
+        localStorage.setItem(ARTIFACTS_PREFIX + session.id, JSON.stringify(arts))
       }
     }
   } catch (e) {
@@ -184,13 +188,25 @@ export function addArtifact(sessionId: string, file: ArtifactFile): ArtifactFile
   const existing = getArtifacts(sessionId)
   const updated = [file, ...existing]
   localStorage.setItem(ARTIFACTS_PREFIX + sessionId, JSON.stringify(updated))
+  
+  // Async backend sync
+  fetch(`${API_URL}/sessions/${sessionId}/artifacts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(file)
+  }).catch(console.error)
+
   return updated
 }
 
 export function clearArtifacts(sessionId: string): void {
   localStorage.removeItem(ARTIFACTS_PREFIX + sessionId)
+  fetch(`${API_URL}/sessions/${sessionId}/artifacts`, {
+    method: 'DELETE'
+  }).catch(console.error)
 }
 
 export function deleteSessionArtifacts(sessionId: string): void {
   localStorage.removeItem(ARTIFACTS_PREFIX + sessionId)
 }
+
