@@ -1,10 +1,10 @@
-# Python / Backend
+# Backend
 backend/venv/
 backend/__pycache__/
 backend/*.pyc
 backend/.env
 
-# Node / Frontend (Vite Defaults)
+# Frontend
 # Logs
 logs
 *.log
