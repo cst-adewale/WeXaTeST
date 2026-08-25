@@ -16,11 +16,10 @@ services:
         sync: false
 
   # Frontend React Static Site
-  - type: web
+  - type: static
     name: graphrag-frontend
-    runtime: static
     buildCommand: cd adewaleai && npm install && npm run build
-    publishPath: adewaleai/dist
+    staticPublishPath: adewaleai/dist
     envVars:
       - key: VITE_API_URL
         fromService:
